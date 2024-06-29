@@ -50,7 +50,7 @@ Este projeto foi desenvolvido com base em técnicas descritas no artigo "[Image 
   imagens médicas para melhorar a precisão e a eficiência dos diagnósticos laboratoriais.
 """)
 st.markdown("[Dataset](https://www.kaggle.com/datasets/paultimothymooney/blood-cells)")
-st.markdown("Acesse nosso GitHub do projeto [aqui](https://github.com/LucioFSMelo/Cnn_classification).")
+st.markdown("Acesse nosso GitHub do projeto [aqui](https://github.com/LucioFSMelo/Image_classification).")
 
 # Etapa 1: Upload do dataset
 uploaded_files = st.file_uploader("Faça o upload de um arquivo zip com o dataset", type="zip")
