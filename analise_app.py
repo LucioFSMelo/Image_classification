@@ -15,79 +15,123 @@ import time
 from io import BytesIO
 from fpdf import FPDF
 import tempfile
+import random
+from  PIL import Image
 
-
-# Definição do modelo CNN em PyTorch
+# Definindo do modelo CNN em PyTorch
 class SimpleCNN(nn.Module):
-    def __init__(self, num_classes=4):
+    def __init__(self, num_classes=4, num_filters=32, filter_size=3, img_size=100):
         super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(3, num_filters, kernel_size=filter_size, padding=1)
+        self.conv2 = nn.Conv2d(num_filters, num_filters, kernel_size=filter_size, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.dropout = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(32 * 50 * 50, 128)
+        self.fc1 = nn.Linear(num_filters * (img_size // 2) * (img_size // 2), 128)
         self.fc2 = nn.Linear(128, num_classes)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.dropout(x)
-        x = x.view(-1, 32 * 50 * 50)
+        x = x.view(-1, self.num_flat_features(x))
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # All dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
 
 # Função para carregar e preparar os dados de imagem
 def load_image_data(path, _transform):
     dataset = datasets.ImageFolder(root=path, transform=_transform)
     return dataset
 
+# Função para formatar o tempo em Horas:Minutos:Segundos
+def format_elapsed_time(elapsed_time):
+    hours = int(elapsed_time // 3600)
+    minutes = int((elapsed_time % 3600) // 60)
+    seconds = int(elapsed_time % 60)
+    return f"{hours:02}h:{minutes:02}m:{seconds:02}s"
 
 # Função para gerar o relatório em PDF
-def generate_pdf_report(metrics_df, accuracy_fig, loss_fig):
+def generate_pdf_report(metrics_df, accuracy_fig, loss_fig, elapsed_time, dict_inputs):
     pdf = FPDF()
     pdf.add_page()
 
-    # Adicionar título
+    # Adicionando título
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="Relatório de Métricas do Modelo", ln=True, align="C")
 
-    # Adicionar tabela de métricas
+    # Adicionando o dicionário dos inputs
     pdf.set_font("Arial", size=10)
+    pdf.cell(200, 10, txt="Inputs:", ln=True)
+    for key, value in dict_inputs.items():
+        pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
+
+
+    # Adicionando tabela de métricas
+    pdf.set_font("Arial", size=10)
+    pdf.cell(200, 10, txt="Métricas:", ln=True)
     for i in range(len(metrics_df)):
         row = metrics_df.iloc[i]
         pdf.cell(200, 10, txt=str(row), ln=True)
 
-    # Adicionar gráficos
-    pdf.add_page()
-    accuracy_fig.savefig("accuracy_plot.png", bbox_inches='tight')
-    pdf.image("accuracy_plot.png", x=10, y=10, w=190)
 
-    pdf.add_page()
-    loss_fig.savefig("loss_plot.png", bbox_inches='tight')
-    pdf.image("loss_plot.png", x=10, y=10, w=190)
+    # Calculando o tempo decorrido
+    tempo_formatado = format_elapsed_time(elapsed_time)
+    tempo = f"Tempo de Análise: {tempo_formatado}"
+    pdf.set_font("Arial", size=10)
+    pdf.cell(200, 10, txt=tempo, ln=True, align="C")
 
-    # Salvar o PDF em um arquivo temporário
+    # Adicionando gráficos
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Gráficos de Acurácia e Perda", ln=True, align="C")
+
+    # Salvando as figuras em arquivos temporários
+    accuracy_img_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    loss_img_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    accuracy_fig.savefig(accuracy_img_temp.name, bbox_inches='tight')
+    loss_fig.savefig(loss_img_temp.name, bbox_inches='tight')
+
+    # Adicionando as imagens ao PDF
+    pdf.image(accuracy_img_temp.name, x=10, y=20, w=90)
+    pdf.image(loss_img_temp.name, x=110, y=20, w=90)
+
+    # Removendo arquivos temporários de imagens
+    os.remove(accuracy_img_temp.name)
+    os.remove(loss_img_temp.name)
+
+    # Salvando o PDF em um arquivo temporário
     temp_pdf_file = tempfile.NamedTemporaryFile(delete=False)
     temp_pdf_file.close()  # Fecha o arquivo para que o FPDF possa acessá-lo
 
     pdf.output(temp_pdf_file.name)
 
-    # Ler o conteúdo do arquivo temporário como bytes
+    # Lendo o conteúdo do arquivo temporário como bytes
     with open(temp_pdf_file.name, "rb") as f:
         pdf_bytes = f.read()
 
-    # Remover o arquivo temporário
+    # Removendo o arquivo temporário
     os.remove(temp_pdf_file.name)
 
     return pdf_bytes
-
-
+# Função para mostrar uma imagem aleatória
+def show_random_image(image_dir):
+    image_files = [os.path.join(image_dir, file) for file in os.listdir(image_dir) if file.endswith(('png', 'jpg', 'jpeg'))]
+    if image_files:
+        random_image = random.choice(image_files)
+        image = Image.open(random_image)
+        st.image(image, caption='Imagem Aleatória do Dataset', use_column_width=True)
+    else:
+        st.warning('Nenhuma imagem encontrada no diretório especificado.')
 
 # Definindo os parâmetros e categorias do modelo
 CATEGORIES = ["EOSINOPHIL", "LYMPHOCYTE", "MONOCYTE", "NEUTROPHIL"]
-IMG_SIZE = 100
 
 # Variáveis globais
 timer_start = 0
@@ -113,53 +157,52 @@ Este projeto foi desenvolvido com base em técnicas descritas no artigo "[Image 
 """)
 st.markdown("[Dataset](https://www.kaggle.com/datasets/paultimothymooney/blood-cells)")
 
-# Etapa 1: Upload do dataset
-uploaded_file = st.file_uploader("Faça o upload de um arquivo zip com o dataset", type="zip")
+path_test = "dataset"
 
-if uploaded_file is not None:
-    # Salva o arquivo zip carregado
-    with open("uploaded_dataset.zip", "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success("Upload concluído!")
+if st.button("Mostrar Imagem Aleatória"):
+    # Mostrando uma imagem aleatória do dataset
+    image_dir = "dataset/dataset-master/dataset-master/JPEGImages"
+    show_random_image(image_dir)
 
-    # Extrai o arquivo zip para um diretório
-    with zipfile.ZipFile("uploaded_dataset.zip", 'r') as zip_ref:
-        zip_ref.extractall("uploaded_dataset")
-    st.success("Dataset extraído com sucesso!")
-
-    path_test = "uploaded_dataset"
-
-# Input para escolher o número de épocas
+# Inputs para hiperparâmetros e configuração da rede
+img_size = st.number_input('Tamanho da Imagem', min_value=32, max_value=256, value=100)
+num_filters = st.number_input('Número de Filtros', min_value=1, max_value=128, value=32)
+filter_size = st.number_input('Tamanho dos Filtros', min_value=1, max_value=7, value=3)
+learning_rate = st.number_input('Taxa de Aprendizado (Learning Rate)', min_value=0.0001, max_value=0.1, value=0.001, format="%.5f")
+batch_size = st.number_input('Tamanho do Batch', min_value=1, max_value=128, value=16)
 nb_epochs = st.number_input('Escolha o número de épocas', min_value=1, max_value=20, value=5)
+dict_inputs = {"Tamanho da Imagem": img_size, "Núemro de Filtros": num_filters,
+                "Tamanho dos Filtros": filter_size, "Learning Rate": learning_rate,
+                "Tamanho do Batch": batch_size, "Número de Épocas": nb_epochs}
 
 # Botão para iniciar a análise e o treinamento do modelo
 if st.button('Iniciar Análise e Treinamento'):
     timer_start = time.time()
     timer_running = True
     if path_test:
-        # Etapa 2: Preparar conjunto de dados para treinamento
+        # Etapa 2: Preparando conjunto de dados para treinamento
         st.write("Preparando conjunto de dados")
         st.write("STATUS: Processando...")
         path_test = os.path.join(path_test, "dataset2-master", "dataset2-master", "images", "TRAIN")
-        transform = transforms.Compose([transforms.Resize((IMG_SIZE, IMG_SIZE)), transforms.ToTensor()])
+        transform = transforms.Compose([transforms.Resize((img_size, img_size)), transforms.ToTensor()])
         dataset = load_image_data(path_test, transform)
 
         if not dataset:
             st.write("STATUS: ERRO")
             st.error("Erro ao carregar os dados. Verifique a estrutura do dataset.")
         else:
-            # Dividir o dataset em treino e teste
+            # Dividindo o dataset em treino e teste
             train_size = int(0.8 * len(dataset))
             test_size = len(dataset) - train_size
             train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
 
-            train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-            test_loader = DataLoader(test_dataset, batch_size=16, shuffle=True)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-            # Inicializar o modelo
-            model = SimpleCNN(num_classes=4)
+            # Inicializando o modelo
+            model = SimpleCNN(num_classes=4, num_filters=num_filters, filter_size=filter_size, img_size=img_size)
             criterion = nn.CrossEntropyLoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.001)
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate)
             st.markdown("STATUS: Concluido!")
 
             # Treinamento do modelo
@@ -209,58 +252,44 @@ if st.button('Iniciar Análise e Treinamento'):
                 val_loss_history.append(val_loss)
                 val_acc_history.append(val_acc)
 
-                st.write(
-                    f"Epoch {epoch + 1}/{nb_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.2f}%, Val Loss: {val_loss:.4f}, Val Accuracy: {val_acc:.2f}%")
-                st.markdown("STATUS: Concluido!")
+                st.write(f'Época {epoch + 1}/{nb_epochs}, Perda de Treinamento: {train_loss:.4f}, Acurácia de Treinamento: {train_acc:.2f}%, Perda de Validação: {val_loss:.4f}, Acurácia de Validação: {val_acc:.2f}%')
 
-            # Plotar a precisão e a perda
-            st.write("Visualização da Acurácia e Perda")
-            fig, ax = plt.subplots(1, 2, figsize=(12, 4))
-            ax[0].plot(train_acc_history, label='Train Accuracy')
-            ax[0].plot(val_acc_history, label='Validation Accuracy')
+            # Visualizando os resultados
+            st.write("Treinamento Concluído")
+            fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+            ax[0].plot(train_loss_history, label='Treinamento')
+            ax[0].plot(val_loss_history, label='Validação')
+            ax[0].set_title('Perda')
+            ax[0].set_xlabel('Épocas')
+            ax[0].set_ylabel('Perda')
             ax[0].legend()
-            ax[0].set_title('Accuracy')
-            ax[1].plot(train_loss_history, label='Train Loss')
-            ax[1].plot(val_loss_history, label='Validation Loss')
-            ax[1].legend()
-            ax[1].set_title('Loss')
             st.pyplot(fig)
 
-            # Gerar dataframe com as métricas
-            metrics_dict = {
-                "Metric": ["Train Loss", "Train Accuracy", "Val Loss", "Final Val Accuracy"],
-                "Value": [train_loss_history[-1], train_acc_history[-1], val_loss_history[-1], val_acc_history[-1]]
+            fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+            ax[1].plot(train_acc_history, label='Treinamento')
+            ax[1].plot(val_acc_history, label='Validação')
+            ax[1].set_title('Acurácia')
+            ax[1].set_xlabel('Épocas')
+            ax[1].set_ylabel('Acurácia')
+            ax[1].legend()
+            st.pyplot(fig)
+
+            # Gerando relatório em PDF
+            metrics_data = {
+                'Época': list(range(1, nb_epochs + 1)),
+                'Perda de Treinamento': train_loss_history,
+                'Acurácia de Treinamento': train_acc_history,
+                'Perda de Validação': val_loss_history,
+                'Acurácia de Validação': val_acc_history,
             }
-            metrics_df = pd.DataFrame(metrics_dict)
 
-            # Plotar as métricas
-            st.write(metrics_df)
+            # Calculando o tempo decorrido
+            timer_end = time.time()
+            elapsed_time = timer_end - timer_start
+            tempo_formatado = format_elapsed_time(elapsed_time)
+            st.write(f"Tempo de Análise: {tempo_formatado}")
 
-            # Gerar relatório em PDF
-            pdf_report = generate_pdf_report(metrics_df, ax[0].figure, ax[1].figure)
-            st.download_button(
-                label="Download PDF Report",
-                data=pdf_report,
-                file_name="report.pdf",
-                mime="application/pdf"
-            )
+            metrics_df = pd.DataFrame(metrics_data)
+            pdf_report = generate_pdf_report(metrics_df, fig, fig, elapsed_time, dict_inputs)
+            st.download_button("Download do Relatório PDF", data=pdf_report, file_name="relatorio_metrica.pdf", mime="application/pdf")
 
-            # Timer
-            timer_running = False
-            elapsed_time = (time.time() - timer_start)/60
-            st.write(f"Tempo total de análise: {elapsed_time:.2f} minutos")
-            st.success("Análise concluída!")
-
-# Botão para limpar todos os dados da análise feita para realizar uma nova análise
-if st.button('Limpar Dados'):
-    # Remover arquivos e resetar variáveis
-    if os.path.exists("uploaded_dataset.zip"):
-        os.remove("uploaded_dataset.zip")
-    if os.path.exists("uploaded_dataset"):
-        for root, dirs, files in os.walk("uploaded_dataset", topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-        os.rmdir("uploaded_dataset")
-    st.write("Todos os dados foram limpos.")
