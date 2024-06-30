@@ -1,2 +1,2 @@
 # Image_classification
-Python, Streamlit, Pandas, Tensorflow, Scikit-learn, Matplotlib, Numpy, CV2
+Python, Streamlit, Pandas, Torch, Torchvision, Matplotlib, Numpy, CV2
